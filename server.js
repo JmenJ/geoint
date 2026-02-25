@@ -70,6 +70,13 @@ function handleStageEnd(roomId, stage) {
             startGamePhase(roomId);
         }
     } else if (stage === 'playing') {
+        // abort if we dropped below two while playing
+        if (Object.keys(room.players).length < 2) {
+            io.to(roomId).emit('errorMsg', 'Игроков слишком мало. Игра завершена.');
+            clearInterval(room.timerInterval);
+            return showPodium(roomId);
+        }
+
         if (room.gameMode === 'blitz') {
             for (let uid in room.players) {
                 if (!room.players[uid].doneGuessing) processBlitzGuess(roomId, uid, room.players[uid].lastMarker);
@@ -94,6 +101,13 @@ function reassignHost(roomId) {
 
 function finishRound(roomId) {
     const room = rooms[roomId];
+
+    // if someone left mid-round, just end
+    if (Object.keys(room.players).length < 2) {
+        io.to(roomId).emit('errorMsg', 'Игроков слишком мало. Игра завершена.');
+        clearInterval(room.timerInterval);
+        return showPodium(roomId);
+    }
 
     if (room.gameMode === 'blitz') {
         // send current standings to all clients as interim result
@@ -179,8 +193,13 @@ function startGamePhase(roomId) {
 
     } else {
         startRoomTimer(roomId, 300, 'playing'); 
-        const safePuzzles = room.puzzles.map(p => ({ id: p.id, ownerId: p.ownerId, ownerName: p.ownerName, imgUrl: p.imgUrl, guessedBy: p.guessedBy }));
-        io.to(roomId).emit('startGuessingPhaseClassic', safePuzzles);
+        // send each client list without their own puzzle
+        for (let uid in room.players) {
+            const filtered = room.puzzles
+                .filter(p => p.ownerId !== uid)
+                .map(p => ({ id: p.id, ownerId: p.ownerId, ownerName: p.ownerName, imgUrl: p.imgUrl, guessedBy: p.guessedBy }));
+            io.to(room.players[uid].socketId).emit('startGuessingPhaseClassic', filtered);
+        }
     }
 }
 
@@ -210,10 +229,15 @@ io.on('connection', (socket) => {
             const room = rooms[roomId];
             room.players[userId].socketId = socket.id; room.players[userId].online = true;
             
+            // send puzzles filtered for this user so they don't see their own
+            const filtered = room.puzzles
+                .filter(p => p.ownerId !== userId)
+                .map(p => ({ id: p.id, ownerId: p.ownerId, ownerName: p.ownerName, imgUrl: p.imgUrl, guessedBy: p.guessedBy }));
+
             socket.emit('reconnectSuccess', { 
                 roomId, gameMode: room.gameMode, players: Object.values(room.players), status: room.status, timeLeft: room.timeLeft,
                 currentRound: room.currentRound, maxRounds: room.maxRounds,
-                puzzles: room.puzzles.map(p => ({ id: p.id, ownerId: p.ownerId, ownerName: p.ownerName, imgUrl: p.imgUrl, guessedBy: p.guessedBy })),
+                puzzles: filtered,
                 assignedPuzzle: room.assignments ? room.assignments[userId] : null
             });
             io.to(roomId).emit('updateLobby', Object.values(room.players));
@@ -249,17 +273,51 @@ io.on('connection', (socket) => {
     });
 
     socket.on('leaveRoom', () => {
-        const roomId = socket.roomId; const userId = socket.userId;
-        if (roomId && rooms[roomId] && rooms[roomId].players[userId]) {
-            delete rooms[roomId].players[userId]; 
-            socket.leave(roomId); socket.roomId = null;
-            
-            reassignHost(roomId); // Передаем хоста, если нужно
-            
-            io.to(roomId).emit('updateLobby', Object.values(rooms[roomId].players));
-            if (Object.keys(rooms[roomId].players).length === 0) { clearInterval(rooms[roomId].timerInterval); delete rooms[roomId]; }
-        }
+        handlePlayerExit(socket, 'manual');
     });
+
+    socket.on('disconnect', () => {
+        handlePlayerExit(socket, 'disconnect');
+    });
+
+    function handlePlayerExit(socket, reason) {
+        const roomId = socket.roomId; const userId = socket.userId;
+        console.log(`[EXIT] user ${userId} reason=${reason} room=${roomId}`);
+        if (!roomId || !rooms[roomId] || !rooms[roomId].players[userId]) return;
+        const room = rooms[roomId];
+        const leavingName = room.players[userId].name;
+        const wasPlaying = room.status === 'playing';
+
+        delete room.players[userId];
+        socket.leave(roomId); socket.roomId = null;
+        reassignHost(roomId);
+
+        io.to(roomId).emit('updateLobby', Object.values(room.players));
+        const remaining = Object.keys(room.players).length;
+        console.log(`[EXIT] remaining players: ${remaining}`);
+        if (remaining < 2 && room.status !== 'lobby') {
+            clearInterval(room.timerInterval);
+            if (room.status === 'playing') {
+                io.to(roomId).emit('playerLeft', leavingName);
+                io.to(roomId).emit('errorMsg', 'Остался один игрок, игра завершена.');
+                console.log('[EXIT] triggering showPodium due to insufficient players');
+                showPodium(roomId);
+            } else {
+                // in prep or other stage just return to lobby
+                io.to(roomId).emit('errorMsg', 'Игроков слишком мало. Возврат в лобби.');
+                room.status = 'lobby'; room.puzzles = [];
+                // Если хоста кикнуло, передаем права
+                reassignHost(roomId);
+                io.to(roomId).emit('updateLobby', Object.values(room.players));
+                io.to(roomId).emit('roundEnded', 'Раунд отменен.');
+            }
+        }
+
+        if (Object.keys(room.players).length === 0) {
+            clearInterval(room.timerInterval);
+            delete rooms[roomId];
+        }
+    }
 
 
     socket.on('submitPuzzle', (data) => {

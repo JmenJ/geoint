@@ -109,7 +109,6 @@ document.getElementById('btn-join-room').addEventListener('click', () => {
 });
 
 document.getElementById('btn-copy-link').addEventListener('click', () => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?room=${displayRoomCode.innerText}`).then(() => showToast('✅ Ссылка скопирована!')); });
-document.getElementById('btn-leave-room').addEventListener('click', () => { socket.emit('leaveRoom'); resetGameUI(true); });
 btnStartGame.addEventListener('click', () => {
     // client-side guard: require at least two players
     const count = playersUl ? playersUl.children.length : 0;
@@ -168,6 +167,12 @@ socket.on('reconnectFailed', () => resetGameUI(true));
 socket.on('updateLobby', updatePlayersList);
 socket.on('errorMsg', (msg) => showToast(msg, 'error'));
 socket.on('kicked', (msg) => { showToast(msg, 'error'); resetGameUI(true); });
+
+// someone left mid-game
+socket.on('playerLeft', (name) => {
+    showToast(`${name} вышел`, 'info');
+});
+
 
 socket.on('timerTick', (data) => {
     const timeStr = formatTime(data.time);
@@ -290,6 +295,10 @@ socket.on('blitzRoundResult', (data) => {
 
 socket.on('resetToLobby', () => { resetGameUI(); showToast('Все готовы!', 'success'); });
 
+// exit button inside map
+const btnExitGame = document.getElementById('btn-exit-game');
+if (btnExitGame) btnExitGame.addEventListener('click', () => { socket.emit('leaveRoom'); resetGameUI(true); });
+
 // ИСПРАВЛЕНА ЛОГИКА ОТОБРАЖЕНИЯ ИГРОКОВ (Добавили 👑 и скрытие кнопки)
 function updatePlayersList(players) {
     playersUl.innerHTML = '';
@@ -317,6 +326,7 @@ function updatePlayersList(players) {
 function renderGallery(puzzles) {
     gallery.innerHTML = ''; activePuzzleId = null;
     puzzles.forEach(p => {
+        // защитимся ещё и на клиенте (сервер уже фильтрует)
         if (p.ownerId === myUserId) return; 
         const isGuessed = p.guessedBy.includes(myUserId);
         const div = document.createElement('div'); div.id = 'puzzle-' + p.id; div.className = `gallery-item ${isGuessed ? 'guessed' : ''}`;
