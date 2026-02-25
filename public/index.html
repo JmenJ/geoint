@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>GeoGuessr Pro</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="auth-screen" class="screen">
+        <div class="modal">
+            <h1>🌍 GeoGuessr Pro</h1>
+            <input type="text" id="player-name" placeholder="Твой никнейм" maxlength="15">
+            
+            <h3 style="margin: 15px 0 5px 0; font-size: 14px; color: #a1a1aa; text-align: left;">Режим игры:</h3>
+            <div class="modes-container" id="modes-container">
+                <div class="mode-card available active" data-mode="classic">
+                    <h4>Классика</h4><p>Баллы за 100м</p>
+                </div>
+                <div class="mode-card available" data-mode="blitz">
+                    <h4>Блиц</h4><p>5 раундов, очки</p>
+                </div>
+                <div class="mode-card" data-mode="hardcore">
+                    <h4>Хардкор</h4><p>В разработке</p>
+                </div>
+            </div>
+
+            <button id="btn-create-room" class="btn-primary">Создать игру</button>
+            <div class="divider">или</div>
+            <input type="text" id="room-code-input" placeholder="Код комнаты" maxlength="4" style="text-transform: uppercase;">
+            <button id="btn-join-room" class="btn-secondary">Присоединиться</button>
+        </div>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div id="sidebar">
+            <div id="lobby-panel">
+                <div class="lobby-info">
+                    <h2>Код: <span id="display-room-code" style="color:#4ade80;">----</span></h2>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button id="btn-copy-link" class="btn-small" style="margin: 0; flex: 1;">📋 Инвайт</button>
+                        <button id="btn-leave-room" class="btn-small" style="margin: 0; flex: 1; background: #ef4444;">🚪 Выйти</button>
+                    </div>
+                </div>
+                <div class="players-list">
+                    <h3>Игроки в комнате:</h3>
+                    <ul id="players-ul"></ul>
+                </div>
+                <button id="btn-start-game" class="btn-primary" style="margin-top: 20px;">🚀 Начать игру</button>
+            </div>
+
+            <div id="prep-panel" style="display: none;">
+                <h3 id="round-indicator" style="display: none;">Раунд 1/5</h3>
+                <div class="timer-box" id="prep-timer">⏳ 05:00</div>
+                <h3>Загадай локацию:</h3>
+                
+                <div id="puzzle-form">
+                    <div id="dropzone" class="dropzone">
+                        <span style="font-size: 24px; margin-bottom: 5px;">📷</span>
+                        <span>Кликни, перетащи файл<br>или нажми <b>Ctrl+V</b></span>
+                        <input type="file" id="file-input" accept="image/*" style="display: none;">
+                        <img id="dropzone-preview" src="" style="display: none;">
+                        <button id="dropzone-clear">✖</button>
+                    </div>
+                    <input type="text" id="coord-input" placeholder="Координаты Google Maps">
+                    <button id="btn-submit-puzzle" class="btn-primary">Отправить загадку</button>
+                </div>
+                <div id="waiting-msg" style="display: none; color: #4ade80; font-weight: bold; text-align: center; margin-top: 20px;">
+                    Ожидаем остальных игроков...
+                </div>
+            </div>
+
+            <div id="play-panel" style="display: none;">
+                <h3 id="play-round-indicator" style="display: none;">Раунд 1/5</h3>
+                <div class="timer-box" id="play-timer">⏱ 05:00</div>
+                
+                <div id="classic-ui">
+                    <h3>Выбери фото:</h3>
+                    <div id="gallery" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px;"></div>
+                </div>
+
+                <div id="blitz-ui" style="display: none;">
+                    <div id="blitz-photo-container">
+                        <img id="blitz-img" src="" alt="Загадка">
+                        <div id="blitz-author">Локация игрока</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 0;">Твой ответ:</h3>
+                <p id="guess-desc" style="font-size: 12px; color: #a1a1aa;">Поставь метку на карте.</p>
+                <button id="btn-make-guess" class="btn-secondary">Угадать!</button>
+            </div>
+        </div>
+        
+        <button id="toggle-sidebar">◀</button>
+        <div id="map"></div>
+
+        <div id="podium-overlay" style="display: none;">
+            <div class="podium-container">
+                <h1>🏆 Конец игры! 🏆</h1>
+                <p style="color: #a1a1aa; margin-bottom: 20px;">Итоги</p>
+                <ul class="podium-list" id="podium-list"></ul>
+                <button id="btn-vote-continue" class="btn-primary" style="margin-top: 20px; font-size: 18px; padding: 15px;">🔄 Готов к новой игре</button>
+                <div id="vote-status" style="display: none;">Ожидаем остальных: <span id="vote-count">...</span> / <span id="vote-total">...</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
